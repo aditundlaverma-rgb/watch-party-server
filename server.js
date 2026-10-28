@@ -4,7 +4,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
 const mongoose = require('mongoose');
-const Room = require('./models/Room'); 
+const Room = require('./models/Room');
 
 const app = express();
 app.use(cors());
@@ -28,7 +28,6 @@ io.on('connection', (socket) => {
     socket.join(roomId);
     
     try {
-
       let room = await Room.findOne({ roomId: roomId });
       
       if (!room) {
@@ -42,7 +41,9 @@ io.on('connection', (socket) => {
       const existingUser = room.participants.find(p => p.userId === socket.id);
       
       if (!existingUser) {
-        const role = room.participants.length === 0 ? 'Host' : 'Participant';
+     
+        const hasHost = room.participants.some(p => p.role === 'Host');
+        const role = hasHost ? 'Participant' : 'Host';
         
         room.participants.push({
           userId: socket.id,
@@ -50,8 +51,7 @@ io.on('connection', (socket) => {
           role: role
         });
         
-   
-        console.log(`${username} joined ${roomId} as ${role} and saved to DB`);
+        await room.save();
       }
 
       io.to(roomId).emit('update_participants', room.participants);
@@ -62,6 +62,7 @@ io.on('connection', (socket) => {
     }
   });
 
+
   socket.on('change_video', async ({ roomId, videoId }) => {
     try {
       const room = await Room.findOne({ roomId: roomId });
@@ -70,10 +71,8 @@ io.on('connection', (socket) => {
         
         if (user && (user.role === 'Host' || user.role === 'Moderator')) {
           room.currentVideoId = videoId;
-          await room.save(); // Save the new video permanently
-          
+          await room.save();
           io.to(roomId).emit('video_changed', videoId);
-          console.log(`Video updated in DB to ${videoId}`);
         }
       }
     } catch (err) { console.error(err); }
@@ -91,11 +90,10 @@ io.on('connection', (socket) => {
       if (room) {
         const requester = room.participants.find(p => p.userId === socket.id);
         if (requester && requester.role === 'Host') {
-          
           const targetUser = room.participants.find(p => p.userId === targetUserId);
           if (targetUser) {
             targetUser.role = newRole;
-            await room.save(); // Save the role promotion
+            await room.save();
             io.to(roomId).emit('update_participants', room.participants);
           }
         }
@@ -103,23 +101,27 @@ io.on('connection', (socket) => {
     } catch (err) { console.error(err); }
   });
 
+
   socket.on('disconnect', async () => {
     console.log(`User disconnected: ${socket.id}`);
     
     try {
-    
       const room = await Room.findOne({ "participants.userId": socket.id });
       
       if (room) {
-     
+        
         room.participants = room.participants.filter(p => p.userId !== socket.id);
         
         if (room.participants.length === 0) {
-         
+         t
           await Room.deleteOne({ _id: room._id });
-          console.log(`Deleted empty room ${room.roomId} from DB`);
         } else {
        
+          const hasHost = room.participants.some(p => p.role === 'Host');
+          if (!hasHost && room.participants.length > 0) {
+            room.participants[0].role = 'Host'; 
+          }
+          
           await room.save();
           io.to(room.roomId).emit('update_participants', room.participants);
         }
