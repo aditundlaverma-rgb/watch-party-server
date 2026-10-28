@@ -17,7 +17,14 @@ const io = new Server(server, {
 
 
 mongoose.connect(process.env.MONGO_URI)
-  .then(() => console.log('Connected to MongoDB successfully!'))
+  .then(async () => {
+    console.log('Connected to MongoDB successfully!');
+    
+ 
+    await Room.deleteMany({});
+    console.log('Cleared old ghost rooms from DB.');
+    
+  })
   .catch((err) => console.error('MongoDB connection error:', err));
 
 io.on('connection', (socket) => {
